@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clonador de voz</title>
+<style>
+  :root {
+    --bg: #e9eef1;
+    --panel: #f8fafb;
+    --ink: #13212b;
+    --muted: #5b6b76;
+    --line: #c9d4da;
+    --accent: #0b6e78;
+    --accent-ink: #ffffff;
+    --accent-soft: #d3e9eb;
+    --danger: #a3311f;
+    --danger-soft: #f6dcd6;
+    --radius: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1a21;
+      --panel: #16252e;
+      --ink: #e6eef2;
+      --muted: #96a8b3;
+      --line: #2b414e;
+      --accent: #3fb6c2;
+      --accent-ink: #06232a;
+      --accent-soft: #17414a;
+      --danger: #ff9b87;
+      --danger-soft: #45201a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.5;
+    padding: 28px 16px 60px;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  header { margin-bottom: 22px; }
+  h1 { font-size: 1.7rem; margin: 0 0 4px; letter-spacing: -0.01em; }
+  header p { margin: 0; color: var(--muted); max-width: 60ch; }
+
+  .grid { display: grid; grid-template-columns: 1fr 1.25fr; gap: 18px; align-items: start; }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 20px;
+  }
+  .panel h2 { font-size: 1.05rem; margin: 0 0 14px; }
+  .panel h2 span { color: var(--muted); font-weight: 400; }
+
+  label { display: block; font-size: .9rem; font-weight: 600; margin: 14px 0 6px; }
+  label small { font-weight: 400; color: var(--muted); }
+  input[type="text"], input[type="password"], textarea, select {
+    width: 100%;
+    font: inherit;
+    color: inherit;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 9px 11px;
+  }
+  textarea { resize: vertical; min-height: 190px; }
+  input:focus-visible, textarea:focus-visible, select:focus-visible,
+  button:focus-visible, .drop:focus-within {
+    outline: 3px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  .drop {
+    display: block;
+    border: 2px dashed var(--line);
+    border-radius: 8px;
+    padding: 18px 12px;
+    text-align: center;
+    color: var(--muted);
+    cursor: pointer;
+    font-weight: 400;
+    margin: 0;
+  }
+  .drop.has-files { border-color: var(--accent); color: var(--ink); background: var(--accent-soft); }
+  .drop input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  .hint { font-size: .85rem; color: var(--muted); margin: 6px 0 0; }
+
+  button {
+    font: inherit;
+    font-weight: 600;
+    border: 0;
+    border-radius: 8px;
+    padding: 10px 16px;
+    cursor: pointer;
+    background: var(--accent);
+    color: var(--accent-ink);
+  }
+  button:disabled { opacity: .55; cursor: wait; }
+  button.ghost {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--line);
+    padding: 5px 10px;
+    font-weight: 400;
+    font-size: .85rem;
+  }
+  .full { width: 100%; margin-top: 16px; }
+  button.ghost.full { padding: 10px 16px; font-size: 1rem; color: var(--ink); }
+
+  .voices { list-style: none; padding: 0; margin: 14px 0 0; }
+  .voices li {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 8px 0; border-top: 1px solid var(--line);
+  }
+  .voices .name { font-weight: 600; }
+  .voices .id { font-size: .75rem; color: var(--muted); word-break: break-all; }
+  .empty { color: var(--muted); font-size: .9rem; margin: 14px 0 0; }
+
+  .row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .row > div { flex: 1 1 140px; }
+  .count { text-align: right; font-size: .8rem; color: var(--muted); margin-top: 4px; }
+
+  .msg { border-radius: 8px; padding: 10px 12px; margin-top: 14px; font-size: .92rem; }
+  .msg.error { background: var(--danger-soft); color: var(--danger); }
+  .msg.ok { background: var(--accent-soft); }
+  .msg[hidden], .hint[hidden], button[hidden] { display: none; }
+
+  .result { margin-top: 18px; }
+  audio { width: 100%; }
+  .download { display: inline-block; margin-top: 8px; color: var(--accent); font-weight: 600; }
+  .keybox { margin-bottom: 18px; border-color: var(--accent); }
+  .keybox[hidden] { display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Clonador de voz</h1>
+    <p>Sube un audio de la voz que quieres copiar y luego escribe cualquier texto para que lo lea con esa voz.
+      ¿No sabes qué dice tu audio? <a href="/transcribir" style="color:var(--accent);font-weight:600">Transcríbelo aquí</a>.</p>
+  </header>
+
+  <section class="panel keybox" id="keybox">
+    <label for="apikey" style="margin-top:0">Tu API key de Fish Audio <small id="keyState"></small></label>
+    <input type="password" id="apikey" placeholder="Pega tu clave aquí" autocomplete="off">
+    <p class="hint">Es lo único que necesitas. Se guarda solo en este navegador y se envía directo a Fish Audio; esta web no la almacena. Créala gratis en fish.audio/app/api-keys.</p>
+  </section>
+
+  <div class="grid">
+    <section class="panel" aria-labelledby="t-voces">
+      <h2 id="t-voces">1. Crea tu voz</h2>
+
+      <label class="drop" id="drop">
+        <input type="file" id="audios" accept="audio/*" multiple>
+        <span id="dropText">Toca para elegir un audio (10 a 30 segundos de voz limpia, sin música)</span>
+      </label>
+      <p class="hint">Formatos recomendados: WAV, MP3 o FLAC. Puedes subir varios audios de la misma voz.</p>
+
+      <label for="vtitle">Nombre de la voz</label>
+      <input type="text" id="vtitle" maxlength="80" placeholder="Ej: Mi narrador">
+
+      <label for="vtext">Lo que dice el audio <small>(escríbelo igual que se oye; obligatorio si tu cuenta es gratis)</small></label>
+      <textarea id="vtext" style="min-height:70px" placeholder="Ej: Hola, bienvenidos a mi canal. Hoy vamos a hablar de…"></textarea>
+
+      <button class="full" id="btnCreate">Crear voz</button>
+      <div class="msg error" id="vErr" hidden></div>
+      <div class="msg ok" id="vOk" hidden></div>
+
+      <ul class="voices" id="voiceList"></ul>
+      <p class="empty" id="voiceEmpty">Aún no tienes voces guardadas en este navegador.</p>
+
+      <label for="manualId">Ya tienes una voz en Fish Audio <small>(pega su ID)</small></label>
+      <div class="row">
+        <div style="flex: 3 1 160px"><input type="text" id="manualId" placeholder="ID de la voz"></div>
+        <div style="flex: 1 1 80px"><button class="ghost" id="btnAddId" style="width:100%;padding:9px">Añadir</button></div>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="t-texto">
+      <h2 id="t-texto">2. Escribe el texto</h2>
+
+      <label for="voiceSel">Voz</label>
+      <select id="voiceSel"></select>
+
+      <label for="text">Texto</label>
+      <textarea id="text" placeholder="Escribe aquí lo que quieres que diga…"></textarea>
+      <div class="count"><span id="chars">0</span> caracteres</div>
+
+      <div class="row">
+        <div>
+          <label for="lang">Idioma del texto</label>
+          <select id="lang">
+            <option value="auto">Detectar solo</option>
+            <option value="es">Español</option>
+            <option value="es-MX">Español (México)</option>
+            <option value="en">Inglés</option>
+            <option value="pt">Portugués</option>
+          </select>
+        </div>
+        <div>
+          <label for="speed">Velocidad: <span id="speedVal">1.0</span>×</label>
+          <input type="range" id="speed" min="0.5" max="2" step="0.05" value="1" style="width:100%">
+        </div>
+      </div>
+
+      <button class="full" id="btnTts">Generar audio</button>
+      <button class="ghost full" id="btnCancel" style="margin-top:8px" hidden>Cancelar</button>
+      <div class="hint" id="tStatus" hidden></div>
+      <div class="msg error" id="tErr" hidden></div>
+
+      <div class="result" id="result" hidden>
+        <audio id="player" controls></audio>
+        <a class="download" id="dl" download="voz.mp3">Descargar MP3</a>
+      </div>
+
+    </section>
+  </div>
+</div>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  };
+
+
+  // Audios de voces "locales" (se guardan en este navegador, no en Fish Audio)
+  const idb = {
+    open() {
+      return new Promise((res, rej) => {
+        const rq = indexedDB.open("clonador-voz", 1);
+        rq.onupgradeneeded = () => rq.result.createObjectStore("audios");
+        rq.onsuccess = () => res(rq.result);
+        rq.onerror = () => rej(rq.error);
+      });
+    },
+    async put(key, val) {
+      const db = await this.open();
+      return new Promise((res, rej) => {
+        const tx = db.transaction("audios", "readwrite");
+        tx.objectStore("audios").put(val, key);
+        tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error);
+      });
+    },
+    async get(key) {
+      const db = await this.open();
+      return new Promise((res, rej) => {
+        const rq = db.transaction("audios").objectStore("audios").get(key);
+        rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error);
+      });
+    },
+    async del(key) {
+      const db = await this.open();
+      return new Promise((res) => {
+        const tx = db.transaction("audios", "readwrite");
+        tx.objectStore("audios").delete(key);
+        tx.oncomplete = () => res(); tx.onerror = () => res();
+      });
+    }
+  };
+  function blobToBase64(blob) {
+    return new Promise((res, rej) => {
+      const fr = new FileReader();
+      fr.onload = () => res(String(fr.result).split(",")[1]);
+      fr.onerror = () => rej(fr.error);
+      fr.readAsDataURL(blob);
+    });
+  }
+
+  let voices = store.get("voices", []);
+
+  function headers(extra) {
+    const h = Object.assign({}, extra || {});
+    const k = ($("apikey").value || "").trim();
+    if (k) h["X-Fish-Key"] = k;
+    return h;
+  }
+  function show(el, text) { el.textContent = text; el.hidden = !text; }
+
+  function renderVoices() {
+    const list = $("voiceList"), sel = $("voiceSel");
+    list.innerHTML = "";
+    sel.innerHTML = "";
+    $("voiceEmpty").hidden = voices.length > 0;
+    voices.forEach((v, i) => {
+      const li = document.createElement("li");
+      const info = document.createElement("div");
+      const n = document.createElement("div"); n.className = "name"; n.textContent = v.title;
+      const d = document.createElement("div"); d.className = "id";
+      d.textContent = v.local ? "Guardada en este navegador" : v.id;
+      info.append(n, d);
+      const del = document.createElement("button");
+      del.className = "ghost"; del.textContent = "Quitar";
+      del.onclick = () => { if (v.local) idb.del(v.id); voices.splice(i, 1); store.set("voices", voices); renderVoices(); };
+      li.append(info, del);
+      list.append(li);
+
+      const o = document.createElement("option");
+      o.value = v.id; o.textContent = v.title;
+      sel.append(o);
+    });
+    if (!voices.length) {
+      const o = document.createElement("option");
+      o.value = ""; o.textContent = "Primero crea una voz";
+      sel.append(o);
+    }
+    const last = store.get("lastVoice", "");
+    if (last && voices.some(v => v.id === last)) sel.value = last;
+  }
+
+  // Selección de archivos
+  $("audios").addEventListener("change", () => {
+    const f = $("audios").files;
+    $("drop").classList.toggle("has-files", f.length > 0);
+    $("dropText").textContent = f.length
+      ? (f.length === 1 ? f[0].name : f.length + " audios seleccionados")
+      : "Toca para elegir un audio (10 a 30 segundos de voz limpia, sin música)";
+  });
+
+  // Crear voz
+  $("btnCreate").addEventListener("click", async () => {
+    show($("vErr"), ""); show($("vOk"), "");
+    const files = $("audios").files;
+    if (!files.length) { show($("vErr"), "Elige al menos un audio."); return; }
+    const title = $("vtitle").value.trim() || "Mi voz";
+    const transcript = $("vtext").value.trim();
+    const fd = new FormData();
+    for (const f of files) fd.append("audios", f);
+    fd.append("title", title);
+    if (transcript) fd.append("texts", transcript);
+
+    const btn = $("btnCreate");
+    btn.disabled = true; btn.textContent = "Creando voz…";
+    try {
+      const r = await fetch("/api/voices", { method: "POST", headers: headers(), body: fd });
+      const j = await r.json().catch(() => ({}));
+
+      if (r.ok) {
+        voices.unshift({ id: j.id, title: j.title || title });
+        store.set("voices", voices);
+        store.set("lastVoice", j.id);
+        renderVoices();
+        $("voiceSel").value = j.id;
+        show($("vOk"), "Voz creada y guardada en tu cuenta de Fish Audio. Ya puedes escribir un texto.");
+        return;
+      }
+
+      if (r.status === 403 && j.code === "model_limit") {
+        // Plan gratis: la voz se guarda aquí y se envía como referencia en cada generación.
+        if (!transcript) {
+          show($("vErr"), "Tu cuenta gratis no puede guardar voces en Fish Audio, pero se puede clonar igual. " +
+            "Escribe en el cuadro \"Lo que dice el audio\" exactamente lo que se dice en tu audio y pulsa Crear voz otra vez.");
+          return;
+        }
+        if (files.length > 1) {
+          show($("vErr"), "En este modo usa un solo audio, con su texto.");
+          return;
+        }
+        if (files[0].size > 8 * 1024 * 1024) {
+          show($("vErr"), "El audio pesa demasiado. Recórtalo a unos 10 a 30 segundos.");
+          return;
+        }
+        const id = "local-" + Date.now().toString(36);
+        await idb.put(id, { blob: files[0], text: transcript });
+        voices.unshift({ id, title, local: true });
+        store.set("voices", voices);
+        store.set("lastVoice", id);
+        renderVoices();
+        $("voiceSel").value = id;
+        show($("vOk"), "Voz lista. Tu cuenta gratis no guarda voces en Fish Audio, así que esta queda en este navegador y se clona cada vez que generas.");
+        return;
+      }
+
+      throw new Error(j.error || ("Error " + r.status));
+    } catch (e) {
+      show($("vErr"), e.message);
+    } finally {
+      btn.disabled = false; btn.textContent = "Crear voz";
+    }
+  });
+
+  // Añadir ID manual
+  $("btnAddId").addEventListener("click", () => {
+    const id = $("manualId").value.trim();
+    if (!id) return;
+    if (!voices.some(v => v.id === id)) {
+      voices.unshift({ id, title: "Voz " + id.slice(0, 6) });
+      store.set("voices", voices);
+      renderVoices();
+    }
+    $("manualId").value = "";
+  });
+
+  // Texto y velocidad
+  $("text").addEventListener("input", () => { $("chars").textContent = $("text").value.length; });
+  $("speed").addEventListener("input", () => { $("speedVal").textContent = Number($("speed").value).toFixed(1); });
+  $("voiceSel").addEventListener("change", () => store.set("lastVoice", $("voiceSel").value));
+
+  // Dividir un texto largo en partes que Fish Audio pueda generar sin que la petición expire
+  function trocear(text, max) {
+    const parts = [];
+    let cur = "";
+    const push = () => { if (cur.trim()) parts.push(cur.trim()); cur = ""; };
+    const paras = text.split(/\n+/).map(x => x.trim()).filter(Boolean);
+    for (const p of paras) {
+      const sentences = p.match(/[^.!?…]+[.!?…]+["”»')\]]*\s*|[^.!?…]+$/g) || [p];
+      for (let sen of sentences) {
+        while (sen.length > max) {
+          let cut = sen.lastIndexOf(", ", max);
+          if (cut < max * 0.5) cut = sen.lastIndexOf(" ", max);
+          if (cut <= 0) cut = max;
+          const head = sen.slice(0, cut + 1);
+          if ((cur + head).length > max) push();
+          cur += head; push();
+          sen = sen.slice(cut + 1).trimStart();
+        }
+        if ((cur + sen).length > max) push();
+        cur += sen;
+      }
+      cur += "\n";
+    }
+    push();
+    return parts;
+  }
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+  // Generar audio
+  let lastUrl = null;
+  let cancelar = false;
+  $("btnCancel").addEventListener("click", () => { cancelar = true; $("btnCancel").disabled = true; });
+
+  function mostrarAudio(blobs) {
+    const blob = new Blob(blobs, { type: "audio/mpeg" });
+    if (lastUrl) URL.revokeObjectURL(lastUrl);
+    lastUrl = URL.createObjectURL(blob);
+    $("player").src = lastUrl;
+    $("dl").href = lastUrl;
+    $("result").hidden = false;
+  }
+
+  $("btnTts").addEventListener("click", async () => {
+    show($("tErr"), ""); show($("tStatus"), "");
+    const text = $("text").value.trim();
+    const voice = $("voiceSel").value;
+    if (!voice) { show($("tErr"), "Crea o elige una voz primero."); return; }
+    if (!text) { show($("tErr"), "Escribe el texto que quieres convertir en voz."); return; }
+
+    const btn = $("btnTts");
+    btn.disabled = true; btn.textContent = "Generando…";
+    cancelar = false;
+    $("btnCancel").hidden = false; $("btnCancel").disabled = false;
+    $("result").hidden = true;
+    const blobs = [];
+    let partes = [];
+    try {
+      // La voz de referencia se prepara una sola vez
+      const base = { speed: Number($("speed").value), language: $("lang").value };
+      const chosen = voices.find(v => v.id === voice);
+      if (chosen && chosen.local) {
+        const saved = await idb.get(voice);
+        if (!saved) throw new Error("No encuentro el audio de esta voz en el navegador. Créala otra vez.");
+        base.reference_audio = await blobToBase64(saved.blob);
+        base.reference_text = saved.text;
+      } else {
+        base.reference_id = voice;
+      }
+
+      partes = trocear(text, 1500);
+      for (let i = 0; i < partes.length; i++) {
+        if (cancelar) break;
+        const etiqueta = partes.length > 1 ? "Parte " + (i + 1) + " de " + partes.length : "";
+        btn.textContent = partes.length > 1 ? "Generando " + (i + 1) + "/" + partes.length + "…" : "Generando…";
+        show($("tStatus"), etiqueta ? etiqueta + ". No cierres esta pestaña hasta que termine." : "");
+
+        let blob = null, ultimoError = "";
+        for (let intento = 1; intento <= 3 && !blob; intento++) {
+          if (cancelar) break;
+          try {
+            const r = await fetch("/api/tts", {
+              method: "POST",
+              headers: headers({ "Content-Type": "application/json" }),
+              body: JSON.stringify(Object.assign({ text: partes[i] }, base))
+            });
+            if (r.ok) { blob = await r.blob(); break; }
+            const j = await r.json().catch(() => ({}));
+            ultimoError = j.error || ("Error " + r.status);
+            // Errores de clave, saldo o datos no se arreglan reintentando
+            if (r.status < 500 && r.status !== 429) break;
+          } catch (e) {
+            ultimoError = "Se cortó la conexión.";
+          }
+          await sleep(2500 * intento);
+        }
+        if (cancelar) break;
+        if (!blob) throw new Error((etiqueta ? etiqueta + ": " : "") + ultimoError);
+        blobs.push(blob);
+      }
+
+      if (blobs.length) {
+        mostrarAudio(blobs);
+        if (cancelar) show($("tStatus"), "Cancelado. Aquí tienes lo que alcanzó a generarse (" + blobs.length + " de " + partes.length + " partes).");
+        else if (partes.length > 1) show($("tStatus"), "Listo: " + partes.length + " partes unidas en un solo MP3.");
+        else show($("tStatus"), "");
+        if (blobs.length && !cancelar) $("player").play().catch(() => {});
+      }
+    } catch (e) {
+      show($("tErr"), e.message);
+      if (blobs.length) {
+        mostrarAudio(blobs);
+        show($("tStatus"), "Se generaron " + blobs.length + " de " + partes.length + " partes antes del error. Puedes descargar lo que hay.");
+      }
+    } finally {
+      btn.disabled = false; btn.textContent = "Generar audio";
+      $("btnCancel").hidden = true;
+    }
+  });
+
+  // API key: se guarda en este navegador
+  function keyState() { $("keyState").textContent = $("apikey").value.trim() ? "(guardada en este navegador)" : ""; }
+  $("apikey").value = store.get("fishKey", "");
+  $("apikey").addEventListener("input", () => { store.set("fishKey", $("apikey").value.trim()); keyState(); });
+  keyState();
+
+  // Si vienes de la página de transcripción, el texto llega ya escrito
+  const pending = store.get("pendingTranscript", "");
+  if (pending) { $("vtext").value = pending; store.set("pendingTranscript", ""); }
+
+  renderVoices();
+})();
+</script>
+</body>
+</html>

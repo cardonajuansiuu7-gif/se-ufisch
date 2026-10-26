@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transcribir audio</title>
+<style>
+  :root {
+    --bg: #e9eef1;
+    --panel: #f8fafb;
+    --ink: #13212b;
+    --muted: #5b6b76;
+    --line: #c9d4da;
+    --accent: #0b6e78;
+    --accent-ink: #ffffff;
+    --accent-soft: #d3e9eb;
+    --danger: #a3311f;
+    --danger-soft: #f6dcd6;
+    --radius: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1a21;
+      --panel: #16252e;
+      --ink: #e6eef2;
+      --muted: #96a8b3;
+      --line: #2b414e;
+      --accent: #3fb6c2;
+      --accent-ink: #06232a;
+      --accent-soft: #17414a;
+      --danger: #ff9b87;
+      --danger-soft: #45201a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.5;
+    padding: 28px 16px 60px;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  header { margin-bottom: 22px; }
+  h1 { font-size: 1.7rem; margin: 0 0 4px; letter-spacing: -0.01em; }
+  header p { margin: 0; color: var(--muted); max-width: 60ch; }
+  header a, .link { color: var(--accent); font-weight: 600; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 18px;
+  }
+  .keybox { border-color: var(--accent); }
+
+  label { display: block; font-size: .9rem; font-weight: 600; margin: 14px 0 6px; }
+  label small { font-weight: 400; color: var(--muted); }
+  input[type="password"], textarea, select {
+    width: 100%;
+    font: inherit;
+    color: inherit;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 9px 11px;
+  }
+  textarea { resize: vertical; min-height: 170px; }
+  input:focus-visible, textarea:focus-visible, select:focus-visible,
+  button:focus-visible, .drop:focus-within {
+    outline: 3px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  .drop {
+    display: block;
+    border: 2px dashed var(--line);
+    border-radius: 8px;
+    padding: 22px 12px;
+    text-align: center;
+    color: var(--muted);
+    cursor: pointer;
+    font-weight: 400;
+    margin: 0;
+  }
+  .drop.has-files { border-color: var(--accent); color: var(--ink); background: var(--accent-soft); }
+  .drop input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  .hint { font-size: .85rem; color: var(--muted); margin: 6px 0 0; }
+
+  button {
+    font: inherit;
+    font-weight: 600;
+    border: 0;
+    border-radius: 8px;
+    padding: 10px 16px;
+    cursor: pointer;
+    background: var(--accent);
+    color: var(--accent-ink);
+  }
+  button:disabled { opacity: .55; cursor: wait; }
+  button.ghost {
+    background: transparent;
+    color: var(--ink);
+    border: 1px solid var(--line);
+  }
+  .full { width: 100%; margin-top: 16px; }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+
+  .msg { border-radius: 8px; padding: 10px 12px; margin-top: 14px; font-size: .92rem; }
+  .msg.error { background: var(--danger-soft); color: var(--danger); }
+  .msg.ok { background: var(--accent-soft); }
+  .msg[hidden] { display: none; }
+  #result[hidden] { display: none; }
+  .meta { font-size: .85rem; color: var(--muted); margin-top: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Transcribir audio</h1>
+    <p>Sube un audio y obtén el texto exacto de lo que se dice, limpio y sin etiquetas. Es el texto que pide Fish Audio para clonar una voz.
+      <a href="/">Volver al clonador de voz</a>.</p>
+  </header>
+
+  <section class="panel keybox">
+    <label for="apikey" style="margin-top:0">Tu API key de Fish Audio <small id="keyState"></small></label>
+    <input type="password" id="apikey" placeholder="Pega tu clave aquí" autocomplete="off">
+    <p class="hint">Es la misma clave del clonador. Se guarda solo en este navegador y esta web no la almacena.</p>
+  </section>
+
+  <section class="panel">
+    <label class="drop" id="drop" style="margin-top:0">
+      <input type="file" id="audio" accept="audio/*,video/mp4,video/webm">
+      <span id="dropText">Toca para elegir un audio (WAV, MP3, M4A, FLAC u OGG)</span>
+    </label>
+    <p class="hint">Para clonar una voz usa un clip de 10 a 30 segundos, con una sola persona hablando.</p>
+
+    <label for="lang">Idioma del audio</label>
+    <select id="lang">
+      <option value="auto">Detectar solo</option>
+      <option value="es">Español</option>
+      <option value="en">Inglés</option>
+      <option value="pt">Portugués</option>
+      <option value="fr">Francés</option>
+    </select>
+
+    <button class="full" id="btn">Transcribir</button>
+    <div class="msg error" id="err" hidden></div>
+  </section>
+
+  <section class="panel" id="result" hidden>
+    <label for="out" style="margin-top:0">Texto del audio <small>(puedes corregirlo antes de copiarlo)</small></label>
+    <textarea id="out"></textarea>
+    <div class="meta" id="meta"></div>
+    <div class="actions">
+      <button id="copy">Copiar texto</button>
+      <button class="ghost" id="send">Llevar al clonador de voz</button>
+    </div>
+    <div class="msg ok" id="okmsg" hidden></div>
+  </section>
+</div>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  };
+  function show(el, text) { el.textContent = text; el.hidden = !text; }
+
+  // API key compartida con el clonador
+  function keyState() { $("keyState").textContent = $("apikey").value.trim() ? "(guardada en este navegador)" : ""; }
+  $("apikey").value = store.get("fishKey", "");
+  $("apikey").addEventListener("input", () => { store.set("fishKey", $("apikey").value.trim()); keyState(); });
+  keyState();
+
+  $("audio").addEventListener("change", () => {
+    const f = $("audio").files[0];
+    $("drop").classList.toggle("has-files", !!f);
+    $("dropText").textContent = f ? f.name : "Toca para elegir un audio (WAV, MP3, M4A, FLAC u OGG)";
+  });
+
+  $("btn").addEventListener("click", async () => {
+    show($("err"), "");
+    $("result").hidden = true;
+    const f = $("audio").files[0];
+    if (!f) { show($("err"), "Elige un audio primero."); return; }
+    if (f.size > 55 * 1024 * 1024) { show($("err"), "El audio pesa demasiado. Usa uno más corto o en MP3."); return; }
+
+    const fd = new FormData();
+    fd.append("audio", f);
+    fd.append("language", $("lang").value);
+    const h = {};
+    const k = $("apikey").value.trim();
+    if (k) h["X-Fish-Key"] = k;
+
+    const btn = $("btn");
+    btn.disabled = true; btn.textContent = "Transcribiendo…";
+    try {
+      const r = await fetch("/api/transcribe", { method: "POST", headers: h, body: fd });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || ("Error " + r.status));
+      if (!j.text) throw new Error("No se detectó voz en el audio.");
+      $("out").value = j.text;
+      const bits = [];
+      if (j.duration) bits.push(Number(j.duration).toFixed(1) + " segundos");
+      if (j.language) bits.push("idioma detectado: " + j.language);
+      $("meta").textContent = bits.join(", ");
+      show($("okmsg"), "");
+      $("result").hidden = false;
+    } catch (e) {
+      show($("err"), e.message);
+    } finally {
+      btn.disabled = false; btn.textContent = "Transcribir";
+    }
+  });
+
+  $("copy").addEventListener("click", async () => {
+    const t = $("out").value;
+    try {
+      await navigator.clipboard.writeText(t);
+    } catch (e) {
+      $("out").select();
+      document.execCommand("copy");
+    }
+    show($("okmsg"), "Texto copiado.");
+  });
+
+  $("send").addEventListener("click", () => {
+    store.set("pendingTranscript", $("out").value.trim());
+    window.location.href = "/";
+  });
+})();
+</script>
+</body>
+</html>
